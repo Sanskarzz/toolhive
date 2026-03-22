@@ -1103,6 +1103,14 @@ const docTemplate = `{
                     "upstream_swap_config": {
                         "$ref": "#/components/schemas/github_com_stacklok_toolhive_pkg_auth_upstreamswap.Config"
                     },
+                    "validating_webhooks": {
+                        "description": "ValidatingWebhooks contains the configuration for validating webhook middleware.",
+                        "items": {
+                            "$ref": "#/components/schemas/github_com_stacklok_toolhive_pkg_webhook.Config"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
                     "volumes": {
                         "description": "Volumes are the directory mounts to pass to the container\nFormat: \"host-path:container-path[:ro]\"",
                         "items": {
@@ -1381,6 +1389,66 @@ const docTemplate = `{
                     },
                     "useLegacyAttributes": {
                         "description": "UseLegacyAttributes controls whether legacy (pre-MCP OTEL semconv) attribute names\nare emitted alongside the new standard attribute names. When true, spans include both\nold and new attribute names for backward compatibility with existing dashboards.\nCurrently defaults to true; this will change to false in a future release.\n+kubebuilder:default=true\n+optional",
+                        "type": "boolean"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive_pkg_webhook.Config": {
+                "properties": {
+                    "failure_policy": {
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive_pkg_webhook.FailurePolicy"
+                    },
+                    "hmac_secret_ref": {
+                        "description": "HMACSecretRef is an optional reference to an HMAC secret for payload signing.",
+                        "type": "string"
+                    },
+                    "name": {
+                        "description": "Name is a unique identifier for this webhook.",
+                        "type": "string"
+                    },
+                    "timeout": {
+                        "$ref": "#/components/schemas/time.Duration"
+                    },
+                    "tls_config": {
+                        "$ref": "#/components/schemas/github_com_stacklok_toolhive_pkg_webhook.TLSConfig"
+                    },
+                    "url": {
+                        "description": "URL is the HTTPS endpoint to call.",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_stacklok_toolhive_pkg_webhook.FailurePolicy": {
+                "description": "FailurePolicy determines behavior when the webhook call fails.",
+                "enum": [
+                    "fail",
+                    "ignore"
+                ],
+                "type": "string",
+                "x-enum-varnames": [
+                    "FailurePolicyFail",
+                    "FailurePolicyIgnore"
+                ]
+            },
+            "github_com_stacklok_toolhive_pkg_webhook.TLSConfig": {
+                "description": "TLSConfig holds optional TLS configuration (CA bundles, client certs).",
+                "properties": {
+                    "ca_bundle_path": {
+                        "description": "CABundlePath is the path to a CA certificate bundle for server verification.",
+                        "type": "string"
+                    },
+                    "client_cert_path": {
+                        "description": "ClientCertPath is the path to a client certificate for mTLS.",
+                        "type": "string"
+                    },
+                    "client_key_path": {
+                        "description": "ClientKeyPath is the path to a client key for mTLS.",
+                        "type": "string"
+                    },
+                    "insecure_skip_verify": {
+                        "description": "InsecureSkipVerify disables server certificate verification.\nWARNING: This should only be used for development/testing.",
                         "type": "boolean"
                     }
                 },
@@ -2987,6 +3055,68 @@ const docTemplate = `{
                     }
                 },
                 "type": "object"
+            },
+            "time.Duration": {
+                "description": "Timeout is the maximum time to wait for a webhook response.",
+                "enum": [
+                    -9223372036854775808,
+                    9223372036854775807,
+                    1,
+                    1000,
+                    1000000,
+                    1000000000,
+                    60000000000,
+                    3600000000000,
+                    -9223372036854775808,
+                    9223372036854775807,
+                    1,
+                    1000,
+                    1000000,
+                    1000000000,
+                    60000000000,
+                    3600000000000,
+                    1,
+                    1000,
+                    1000000,
+                    1000000000,
+                    60000000000,
+                    1,
+                    1000,
+                    1000000,
+                    1000000000,
+                    60000000000,
+                    3600000000000
+                ],
+                "type": "integer",
+                "x-enum-varnames": [
+                    "minDuration",
+                    "maxDuration",
+                    "Nanosecond",
+                    "Microsecond",
+                    "Millisecond",
+                    "Second",
+                    "Minute",
+                    "Hour",
+                    "minDuration",
+                    "maxDuration",
+                    "Nanosecond",
+                    "Microsecond",
+                    "Millisecond",
+                    "Second",
+                    "Minute",
+                    "Hour",
+                    "Nanosecond",
+                    "Microsecond",
+                    "Millisecond",
+                    "Second",
+                    "Minute",
+                    "Nanosecond",
+                    "Microsecond",
+                    "Millisecond",
+                    "Second",
+                    "Minute",
+                    "Hour"
+                ]
             },
             "types.MiddlewareConfig": {
                 "properties": {
