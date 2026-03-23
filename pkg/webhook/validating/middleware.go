@@ -115,13 +115,7 @@ func createValidatingHandler(executors []clientExecutor, serverName, transport s
 
 			// Add Principal if authenticated
 			if identity, ok := auth.IdentityFromContext(r.Context()); ok {
-				whReq.Principal = &webhook.Principal{
-					Sub:    identity.Subject,
-					Email:  identity.Email,
-					Name:   identity.Name,
-					Groups: identity.Groups,
-					Claims: identity.Claims,
-				}
+				whReq.Principal = identity.GetPrincipalInfo()
 			}
 
 			// Call each webhook in order
