@@ -279,8 +279,7 @@ const docTemplate = `{
                         "type": "boolean"
                     },
                     "timeout": {
-                        "example": "5m",
-                        "type": "string"
+                        "type": "integer"
                     },
                     "token_url": {
                         "type": "string"
@@ -1408,7 +1407,8 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "timeout": {
-                        "$ref": "#/components/schemas/time.Duration"
+                        "description": "Timeout is the maximum time to wait for a webhook response.",
+                        "type": "integer"
                     },
                     "tls_config": {
                         "$ref": "#/components/schemas/github_com_stacklok_toolhive_pkg_webhook.TLSConfig"
@@ -3055,78 +3055,6 @@ const docTemplate = `{
                     }
                 },
                 "type": "object"
-            },
-            "time.Duration": {
-                "description": "Timeout is the maximum time to wait for a webhook response.",
-                "enum": [
-                    -9223372036854775808,
-                    9223372036854775807,
-                    1,
-                    1000,
-                    1000000,
-                    1000000000,
-                    60000000000,
-                    3600000000000,
-                    -9223372036854775808,
-                    9223372036854775807,
-                    1,
-                    1000,
-                    1000000,
-                    1000000000,
-                    60000000000,
-                    3600000000000,
-                    -9223372036854775808,
-                    9223372036854775807,
-                    1,
-                    1000,
-                    1000000,
-                    1000000000,
-                    60000000000,
-                    3600000000000,
-                    -9223372036854775808,
-                    9223372036854775807,
-                    1,
-                    1000,
-                    1000000,
-                    1000000000,
-                    60000000000,
-                    3600000000000
-                ],
-                "type": "integer",
-                "x-enum-varnames": [
-                    "minDuration",
-                    "maxDuration",
-                    "Nanosecond",
-                    "Microsecond",
-                    "Millisecond",
-                    "Second",
-                    "Minute",
-                    "Hour",
-                    "minDuration",
-                    "maxDuration",
-                    "Nanosecond",
-                    "Microsecond",
-                    "Millisecond",
-                    "Second",
-                    "Minute",
-                    "Hour",
-                    "minDuration",
-                    "maxDuration",
-                    "Nanosecond",
-                    "Microsecond",
-                    "Millisecond",
-                    "Second",
-                    "Minute",
-                    "Hour",
-                    "minDuration",
-                    "maxDuration",
-                    "Nanosecond",
-                    "Microsecond",
-                    "Millisecond",
-                    "Second",
-                    "Minute",
-                    "Hour"
-                ]
             },
             "types.MiddlewareConfig": {
                 "properties": {
