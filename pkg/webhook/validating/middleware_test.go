@@ -79,9 +79,11 @@ func TestValidatingMiddleware(t *testing.T) {
 		ctx := context.WithValue(req.Context(), mcp.MCPRequestContextKey, parsedMCP)
 
 		identity := &auth.Identity{
-			Subject: "user-1",
-			Email:   "user@example.com",
-			Groups:  []string{"admin"},
+			PrincipalInfo: auth.PrincipalInfo{
+				Subject: "user-1",
+				Email:   "user@example.com",
+				Groups:  []string{"admin"},
+			},
 		}
 		ctx = auth.WithIdentity(ctx, identity)
 
@@ -111,7 +113,7 @@ func TestValidatingMiddleware(t *testing.T) {
 		assert.Equal(t, "192.168.1.1:1234", lastRequest.Context.SourceIP)
 
 		require.NotNil(t, lastRequest.Principal)
-		assert.Equal(t, "user-1", lastRequest.Principal.Sub)
+		assert.Equal(t, "user-1", lastRequest.Principal.Subject)
 		assert.Equal(t, "user@example.com", lastRequest.Principal.Email)
 		assert.Equal(t, []string{"admin"}, lastRequest.Principal.Groups)
 	})
