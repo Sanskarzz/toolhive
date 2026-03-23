@@ -66,7 +66,7 @@ type Config struct {
 	// URL is the HTTPS endpoint to call.
 	URL string `json:"url"`
 	// Timeout is the maximum time to wait for a webhook response.
-	Timeout time.Duration `json:"timeout"`
+	Timeout time.Duration `json:"timeout" yaml:"timeout" swaggertype:"primitive,integer"`
 	// FailurePolicy determines behavior when the webhook call fails.
 	FailurePolicy FailurePolicy `json:"failure_policy"`
 	// TLSConfig holds optional TLS configuration (CA bundles, client certs).
