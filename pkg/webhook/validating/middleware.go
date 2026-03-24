@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/exp/jsonrpc2"
 
 	"github.com/stacklok/toolhive/pkg/auth"
 	"github.com/stacklok/toolhive/pkg/mcp"
@@ -93,7 +94,7 @@ func createValidatingHandler(executors []clientExecutor, serverName, transport s
 			// Read the request body to get the raw MCP request
 			bodyBytes, err := io.ReadAll(r.Body)
 			if err != nil {
-				sendErrorResponse(w, http.StatusInternalServerError, "Internal Server Error", "Failed to read request body")
+				sendErrorResponse(w, http.StatusInternalServerError, "Failed to read request body")
 				return
 			}
 			// Restore the request body for downstream handlers
@@ -133,24 +134,19 @@ func createValidatingHandler(executors []clientExecutor, serverName, transport s
 
 					slog.Error("Validating webhook error caused request denial",
 						"webhook", whName, "error", err)
-					sendErrorResponse(w, http.StatusForbidden, "Forbidden", fmt.Sprintf("Webhook %q error: %v", whName, err))
+					sendErrorResponse(w, http.StatusForbidden, "Request denied by policy")
 					return
 				}
 
 				if !resp.Allowed {
 					slog.Info("Validating webhook denied request", "webhook", whName, "reason", resp.Reason, "message", resp.Message)
 
-					msg := resp.Message
-					if msg == "" {
-						msg = fmt.Sprintf("Webhook %q denied the request", whName)
-					}
+					// Prevent information leaks by ignoring the webhook's message
+					msg := "Request denied by policy"
 
-					code := resp.Code
-					if code < 400 || code > 599 {
-						code = http.StatusForbidden
-					}
+					code := http.StatusForbidden
 
-					sendErrorResponse(w, code, "Forbidden", msg)
+					sendErrorResponse(w, code, msg)
 					return
 				}
 			}
@@ -167,21 +163,15 @@ func readSourceIP(r *http.Request) string {
 	return r.RemoteAddr
 }
 
-func sendErrorResponse(w http.ResponseWriter, statusCode int, _, message string) {
+func sendErrorResponse(w http.ResponseWriter, statusCode int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 
-	// Since we are intercepting an MCP request, we should really be returning a JSON-RPC error.
-	// However, if the error happens before actual execution, a standard HTTP error or a basic JSON
-	// with error details is typical. Here we'll follow standard HTTP error structure or JSON-RPC format.
-	// We'll return a JSON format that could be interpreted as a JSON-RPC error.
-	errResp := map[string]any{
-		"jsonrpc": "2.0",
-		"id":      nil,
-		"error": map[string]any{
-			"code":    statusCode,
-			"message": message,
-		},
+	// Return a JSON-RPC 2.0 error so MCP clients can parse the denial.
+	// The HTTP status code signals the error at the transport level; the JSON-RPC body carries the detail.
+	errResp := &jsonrpc2.Response{
+		ID:    jsonrpc2.ID{},
+		Error: jsonrpc2.NewError(int64(statusCode), message),
 	}
 	_ = json.NewEncoder(w).Encode(errResp)
 }

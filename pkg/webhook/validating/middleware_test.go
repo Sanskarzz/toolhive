@@ -20,6 +20,9 @@ import (
 	"github.com/stacklok/toolhive/pkg/webhook"
 )
 
+// closedServerURL is a URL that will always fail to connect (port 0 is reserved/closed).
+const closedServerURL = "http://127.0.0.1:0"
+
 //nolint:paralleltest // Shares a mock HTTP server and lastRequest state
 func TestValidatingMiddleware(t *testing.T) {
 	// Setup a mock webhook server
@@ -118,6 +121,27 @@ func TestValidatingMiddleware(t *testing.T) {
 		assert.Equal(t, []string{"admin"}, lastRequest.Principal.Groups)
 	})
 
+	t.Run("Allowed Request - No Identity", func(t *testing.T) {
+		mockResponse.Allowed = true
+
+		reqBody := []byte(`{"jsonrpc":"2.0","method":"tools/call","id":1}`)
+		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(reqBody))
+		ctx := context.WithValue(req.Context(), mcp.MCPRequestContextKey, &mcp.ParsedMCPRequest{})
+		req = req.WithContext(ctx)
+
+		var nextCalled bool
+		nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+			nextCalled = true
+		})
+
+		rr := httptest.NewRecorder()
+		mw(nextHandler).ServeHTTP(rr, req)
+
+		assert.True(t, nextCalled)
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Nil(t, lastRequest.Principal, "Principal should be nil")
+	})
+
 	t.Run("Denied Request", func(t *testing.T) {
 		mockResponse.Allowed = false
 		mockResponse.Message = "Custom deny message"
@@ -144,19 +168,39 @@ func TestValidatingMiddleware(t *testing.T) {
 		var errResp map[string]interface{}
 		err := json.Unmarshal(rr.Body.Bytes(), &errResp)
 		require.NoError(t, err)
-		assert.Equal(t, "2.0", errResp["jsonrpc"])
-		assert.Nil(t, errResp["id"])
 
-		errObj, ok := errResp["error"].(map[string]interface{})
+		errObj, ok := errResp["Error"].(map[string]interface{})
 		require.True(t, ok)
 		assert.Equal(t, float64(http.StatusForbidden), errObj["code"])
-		assert.Equal(t, "Custom deny message", errObj["message"])
+		assert.Equal(t, "Request denied by policy", errObj["message"])
+	})
+
+	t.Run("Denied Request - Out-of-Range Code Defaults to 403", func(t *testing.T) {
+		mockResponse.Allowed = false
+		mockResponse.Message = "blocked"
+		mockResponse.Code = 200 // out-of-range (not 4xx-5xx) should default to 403
+
+		reqBody := []byte(`{"jsonrpc":"2.0","method":"tools/call","id":1}`)
+		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(reqBody))
+		ctx := context.WithValue(req.Context(), mcp.MCPRequestContextKey, &mcp.ParsedMCPRequest{})
+		req = req.WithContext(ctx)
+
+		var nextCalled bool
+		nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+			nextCalled = true
+		})
+
+		rr := httptest.NewRecorder()
+		mw(nextHandler).ServeHTTP(rr, req)
+
+		assert.False(t, nextCalled)
+		assert.Equal(t, http.StatusForbidden, rr.Code, "Out-of-range webhook code should be normalized to 403")
 	})
 
 	t.Run("Webhook Error - Fail Policy", func(t *testing.T) {
 		// Create a client pointing to a closed port to generate connection error
 		cfg := config[0]
-		cfg.URL = "http://127.0.0.1:0"
+		cfg.URL = closedServerURL
 		cfg.FailurePolicy = webhook.FailurePolicyFail
 
 		failClient, err := webhook.NewClient(cfg, webhook.TypeValidating, nil)
@@ -184,7 +228,7 @@ func TestValidatingMiddleware(t *testing.T) {
 	t.Run("Webhook Error - Ignore Policy", func(t *testing.T) {
 		// Create a client pointing to a closed port to generate connection error
 		cfg := config[0]
-		cfg.URL = "http://127.0.0.1:0"
+		cfg.URL = closedServerURL
 		cfg.FailurePolicy = webhook.FailurePolicyIgnore
 
 		ignoreClient, err := webhook.NewClient(cfg, webhook.TypeValidating, nil)
@@ -310,4 +354,157 @@ func TestCreateMiddleware(t *testing.T) {
 	// Test Handler/Close methods to get 100% coverage
 	require.NotNil(t, mw.Handler())
 	require.NoError(t, mw.Close())
+}
+
+//nolint:paralleltest // Shares a mock HTTP server and lastRequest state
+func TestMultiWebhookChain(t *testing.T) {
+	// Setup mock webhook servers
+	var lastRequest1, lastRequest2 webhook.Request
+	mockResponse1 := webhook.Response{Version: webhook.APIVersion, UID: "resp-uid-1", Allowed: true}
+	mockResponse2 := webhook.Response{Version: webhook.APIVersion, UID: "resp-uid-2", Allowed: true}
+
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&lastRequest1)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(mockResponse1)
+	}))
+	defer server1.Close()
+
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&lastRequest2)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(mockResponse2)
+	}))
+	defer server2.Close()
+
+	// Create middleware handler with two webhooks
+	config := []webhook.Config{
+		{
+			Name:          "hook-1",
+			URL:           server1.URL,
+			Timeout:       webhook.DefaultTimeout,
+			FailurePolicy: webhook.FailurePolicyFail,
+			TLSConfig:     &webhook.TLSConfig{InsecureSkipVerify: true},
+		},
+		{
+			Name:          "hook-2",
+			URL:           server2.URL,
+			Timeout:       webhook.DefaultTimeout,
+			FailurePolicy: webhook.FailurePolicyFail,
+			TLSConfig:     &webhook.TLSConfig{InsecureSkipVerify: true},
+		},
+	}
+
+	var executors []clientExecutor
+	for _, cfg := range config {
+		client, err := webhook.NewClient(cfg, webhook.TypeValidating, nil)
+		require.NoError(t, err)
+		executors = append(executors, clientExecutor{client: client, config: cfg})
+	}
+	mw := createValidatingHandler(executors, "test-server", "stdio")
+
+	createReq := func() *http.Request {
+		reqBody := []byte(`{"jsonrpc":"2.0","method":"tools/call","id":1}`)
+		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(reqBody))
+		ctx := context.WithValue(req.Context(), mcp.MCPRequestContextKey, &mcp.ParsedMCPRequest{})
+		return req.WithContext(ctx)
+	}
+
+	t.Run("Both Allow", func(t *testing.T) {
+		mockResponse1.Allowed = true
+		mockResponse2.Allowed = true
+		lastRequest1 = webhook.Request{}
+		lastRequest2 = webhook.Request{}
+
+		var nextCalled bool
+		nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) { nextCalled = true })
+
+		rr := httptest.NewRecorder()
+		mw(nextHandler).ServeHTTP(rr, createReq())
+
+		assert.True(t, nextCalled, "Next handler should be called when both webhooks allow")
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.NotEmpty(t, lastRequest1.UID, "First webhook should be called")
+		assert.NotEmpty(t, lastRequest2.UID, "Second webhook should be called")
+	})
+
+	t.Run("First Denies, Second Skipped", func(t *testing.T) {
+		mockResponse1.Allowed = false
+		mockResponse1.Message = "Denied by hook-1"
+		mockResponse2.Allowed = true // shouldn't matter
+		lastRequest1 = webhook.Request{}
+		lastRequest2 = webhook.Request{} // reset
+
+		var nextCalled bool
+		nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) { nextCalled = true })
+
+		rr := httptest.NewRecorder()
+		mw(nextHandler).ServeHTTP(rr, createReq())
+
+		assert.False(t, nextCalled, "Next handler should not be called")
+		assert.Equal(t, http.StatusForbidden, rr.Code)
+		assert.NotEmpty(t, lastRequest1.UID, "First webhook should be called")
+		assert.Empty(t, lastRequest2.UID, "Second webhook should NOT be called")
+
+		// Verify error response
+		var errResp map[string]interface{}
+		_ = json.Unmarshal(rr.Body.Bytes(), &errResp)
+		errObj := errResp["Error"].(map[string]interface{})
+		assert.Equal(t, "Request denied by policy", errObj["message"])
+	})
+
+	t.Run("First Allows, Second Denies", func(t *testing.T) {
+		mockResponse1.Allowed = true
+		mockResponse2.Allowed = false
+		mockResponse2.Message = "Denied by hook-2"
+		lastRequest1 = webhook.Request{}
+		lastRequest2 = webhook.Request{}
+
+		var nextCalled bool
+		nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) { nextCalled = true })
+
+		rr := httptest.NewRecorder()
+		mw(nextHandler).ServeHTTP(rr, createReq())
+
+		assert.False(t, nextCalled, "Next handler should not be called")
+		assert.Equal(t, http.StatusForbidden, rr.Code)
+		assert.NotEmpty(t, lastRequest1.UID, "First webhook should be called")
+		assert.NotEmpty(t, lastRequest2.UID, "Second webhook should be called")
+
+		// Verify error response
+		var errResp map[string]interface{}
+		_ = json.Unmarshal(rr.Body.Bytes(), &errResp)
+		errObj := errResp["Error"].(map[string]interface{})
+		assert.Equal(t, "Request denied by policy", errObj["message"])
+	})
+
+	t.Run("Mixed Failure Policies: Err Ignore -> Allow", func(t *testing.T) {
+		// Clone configs, set hook-1 to fail-open (ignore) and use bad URL
+		cfg1 := config[0]
+		cfg1.FailurePolicy = webhook.FailurePolicyIgnore
+		cfg1.URL = closedServerURL // Force connection error
+		client1, _ := webhook.NewClient(cfg1, webhook.TypeValidating, nil)
+
+		cfg2 := config[1]
+		client2, _ := webhook.NewClient(cfg2, webhook.TypeValidating, nil)
+
+		mixedExecutors := []clientExecutor{
+			{client: client1, config: cfg1},
+			{client: client2, config: cfg2},
+		}
+		mixedMw := createValidatingHandler(mixedExecutors, "test-server", "stdio")
+
+		mockResponse2.Allowed = true
+		lastRequest2 = webhook.Request{}
+
+		var nextCalled bool
+		nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) { nextCalled = true })
+
+		rr := httptest.NewRecorder()
+		mixedMw(nextHandler).ServeHTTP(rr, createReq())
+
+		assert.True(t, nextCalled, "Next handler should be called because error on first is ignored, and second allows")
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.NotEmpty(t, lastRequest2.UID, "Second webhook should be called")
+	})
 }
