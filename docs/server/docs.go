@@ -279,7 +279,7 @@ const docTemplate = `{
                         "type": "boolean"
                     },
                     "timeout": {
-                        "type": "integer"
+                        "$ref": "#/components/schemas/time.Duration"
                     },
                     "token_url": {
                         "type": "string"
@@ -3055,6 +3055,61 @@ const docTemplate = `{
                     }
                 },
                 "type": "object"
+            },
+            "time.Duration": {
+                "enum": [
+                    -9223372036854775808,
+                    9223372036854775807,
+                    1,
+                    1000,
+                    1000000,
+                    1000000000,
+                    60000000000,
+                    3600000000000,
+                    -9223372036854775808,
+                    9223372036854775807,
+                    1,
+                    1000,
+                    1000000,
+                    1000000000,
+                    60000000000,
+                    3600000000000,
+                    -9223372036854775808,
+                    9223372036854775807,
+                    1,
+                    1000,
+                    1000000,
+                    1000000000,
+                    60000000000,
+                    3600000000000
+                ],
+                "type": "integer",
+                "x-enum-varnames": [
+                    "minDuration",
+                    "maxDuration",
+                    "Nanosecond",
+                    "Microsecond",
+                    "Millisecond",
+                    "Second",
+                    "Minute",
+                    "Hour",
+                    "minDuration",
+                    "maxDuration",
+                    "Nanosecond",
+                    "Microsecond",
+                    "Millisecond",
+                    "Second",
+                    "Minute",
+                    "Hour",
+                    "minDuration",
+                    "maxDuration",
+                    "Nanosecond",
+                    "Microsecond",
+                    "Millisecond",
+                    "Second",
+                    "Minute",
+                    "Hour"
+                ]
             },
             "types.MiddlewareConfig": {
                 "properties": {
